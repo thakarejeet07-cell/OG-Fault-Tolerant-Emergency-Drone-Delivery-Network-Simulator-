@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drone Mesh Simulator – Replay UI</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c232c; --line:#2a323c;
+    --text:#e6edf3; --muted:#8b949e;
+    --idle:#6e8bb3; --route:#3fb950; --rerout:#e3a008; --fault:#f85149; --comms:#bc8cff;
+    --crit:#ff4d6d; --accent:#58a6ff;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{background:var(--bg);color:var(--text);font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column}
+  header{display:flex;align-items:center;gap:16px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
+  header h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px}
+  header .meta{color:var(--muted);font-size:12.5px}
+  header .spacer{flex:1}
+  button,.btn{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 12px;font:inherit;cursor:pointer}
+  button:hover,.btn:hover{border-color:var(--accent)}
+  button.primary{background:#1f6feb;border-color:#1f6feb}
+  button.primary:hover{background:#388bfd}
+  main{flex:1;display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:12px;padding:12px;min-height:0}
+  @media (max-width:980px){main{grid-template-columns:1fr;grid-auto-rows:minmax(420px,auto);overflow:auto}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;min-height:0}
+  .left{display:flex;flex-direction:column;gap:12px;min-height:0}
+  .mapwrap{flex:1;position:relative;min-height:300px;overflow:hidden}
+  canvas{width:100%;height:100%;display:block}
+  .controls{padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+  .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
+  select{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font:inherit}
+  label.chk{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:12.5px;cursor:pointer}
+  .time{font-variant-numeric:tabular-nums;min-width:150px;color:var(--muted)}
+  .time b{color:var(--text)}
+  .right{display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto}
+  .right > *{flex:none}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border-radius:8px;overflow:hidden}
+  .stat{background:var(--panel);padding:8px 10px}
+  .stat .v{font-size:20px;font-weight:650;font-variant-numeric:tabular-nums}
+  .stat .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .sec{display:flex;flex-direction:column;min-height:0}
+  .sec h2{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:0;padding:9px 12px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between}
+  .list{overflow:auto;max-height:230px}
+  .item{display:flex;align-items:center;gap:8px;padding:5px 12px;border-bottom:1px solid #1d242d;font-size:13px;cursor:default}
+  .item.sel{background:#1f2a38}
+  .dot{width:10px;height:10px;border-radius:50%;flex:none}
+  .bar{width:60px;height:7px;border-radius:4px;background:#222b35;overflow:hidden;flex:none}
+  .bar i{display:block;height:100%}
+  .tag{font-size:10.5px;padding:1px 6px;border-radius:9px;background:#222b35;color:var(--muted);margin-left:auto;white-space:nowrap}
+  .tag.crit{background:#4a1a26;color:#ff8da1}
+  .tag.A{background:#11351f;color:#56d364}.tag.C{background:#1b2735;color:#79c0ff}.tag.X{background:#4a1a26;color:#ff8da1}.tag.P{background:#33290f;color:#e3b341}
+  .log{max-height:240px;overflow:auto;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;padding:6px 12px}
+  .log div{padding:1px 0;color:#b6c0cb;white-space:pre-wrap;word-break:break-word}
+  .log .t{color:var(--muted);margin-right:6px}
+  .log .hl-pre{color:#ff8da1}.log .hl-rep{color:#e3b341}.log .hl-haz{color:#bc8cff}.log .hl-ok{color:#56d364}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;padding:8px 12px;font-size:12px;color:var(--muted);border-top:1px solid var(--line)}
+  .legend span{display:flex;align-items:center;gap:5px}
+  .sw{width:11px;height:11px;border-radius:3px;display:inline-block}
+  #drop{position:absolute;inset:0;background:rgba(13,17,23,.94);display:flex;align-items:center;justify-content:center;text-align:center;z-index:5}
+  #drop.hidden{display:none}
+  #drop .box{max-width:520px;padding:28px;border:2px dashed var(--line);border-radius:12px}
+  #drop.over .box{border-color:var(--accent);background:#10202f}
+  #drop h2{margin:0 0 8px}
+  #drop code{background:#222b35;padding:2px 6px;border-radius:4px;font-size:12.5px}
+  select#scn{max-width:260px}
+  .descbar{padding:7px 16px;background:#12171e;border-bottom:1px solid var(--line);color:var(--muted);font-size:12.5px}
+  .descbar b{color:var(--text)}
+  .tag.warn{background:#33290f;color:#e3b341}
+  .tag.haz{background:#2b2140;color:#c9a7ff}
+  .tag.ok{background:#11351f;color:#56d364}
+  .emg .item{align-items:flex-start;flex-wrap:wrap}
+  .emg .item .tag{margin-left:0;flex:none}
+  .emg .item span.txt{flex:1;min-width:120px}
+  .scrubwrap{position:relative;flex:1;min-width:140px;padding-top:8px}
+  .scrubwrap input{width:100%}
+  #marks{position:absolute;left:8px;right:8px;top:0;height:10px;pointer-events:none}
+  #marks i{position:absolute;top:0;width:4px;height:10px;margin-left:-2px;border-radius:2px;pointer-events:auto;cursor:pointer}
+  .keyline{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--muted)}
+  .keyline span{display:flex;align-items:center;gap:5px}
+  .keyline i{width:4px;height:11px;border-radius:2px;display:inline-block}
+  #report{position:absolute;right:12px;bottom:12px;width:min(440px,calc(100% - 24px));max-height:78%;display:flex;flex-direction:column;
+    background:#161b22f2;border:1px solid #3b4654;border-radius:10px;box-shadow:0 8px 28px #000a;z-index:4;backdrop-filter:blur(4px)}
+  #report.hidden{display:none}
+  #report .rhead{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line)}
+  #report .rhead b{font-size:14px}
+  #report .rhead .sub{color:var(--muted);font-size:12px}
+  #report .rhead button{margin-left:auto;padding:1px 9px;font-size:16px;line-height:1.3}
+  #report .rsum{display:flex;gap:8px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--line)}
+  #report .pill{padding:3px 10px;border-radius:12px;font-size:12.5px;font-weight:600}
+  #report .pill.ok{background:#11351f;color:#56d364}
+  #report .pill.bad{background:#4a1a26;color:#ff8da1}
+  #report .pill.none{background:#222b35;color:var(--muted)}
+  #report .rbody{overflow:auto;padding:4px 0}
+  .rrow{display:flex;gap:9px;padding:7px 12px;border-bottom:1px solid #1d242d;font-size:12.5px}
+  .rrow .b{flex:none;width:66px;text-align:center;font-size:10.5px;font-weight:700;padding:2px 0;border-radius:9px;height:max-content;margin-top:2px}
+  .rrow .b.ok{background:#11351f;color:#56d364}.rrow .b.bad{background:#4a1a26;color:#ff8da1}.rrow .b.none{background:#222b35;color:var(--muted)}
+  .rrow .t{font-weight:600}
+  .rrow .d{color:var(--muted);margin-top:1px}
+  .rfoot{padding:7px 12px;border-top:1px solid var(--line);color:var(--muted);font-size:11px}
+  .rfoot b{color:var(--text)}
+  .rmore{padding:7px 12px;color:var(--muted);font-size:12px}
+  #tip{position:absolute;pointer-events:none;background:#000c;border:1px solid var(--line);padding:4px 8px;border-radius:6px;font-size:12px;display:none;white-space:nowrap}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🚁 Drone Mesh Simulator</h1>
+  <span class="meta" id="meta">no trace loaded</span>
+  <span class="spacer"></span>
+  <select id="scn" title="Choose a scenario"></select>
+  <label class="btn" for="file">Open trace file…</label>
+  <input id="file" type="file" accept=".json,.js" hidden>
+</header>
+<div class="descbar" id="desc">Choose a scenario from the dropdown at the top right.</div>
+
+<main>
+  <div class="left">
+    <div class="card mapwrap" id="mapwrap">
+      <canvas id="cv"></canvas>
+      <div id="tip"></div>
+      <div id="report" class="hidden">
+        <div class="rhead"><b>📋 Mission report</b><span class="sub" id="rsub"></span><button id="rclose" title="Close">×</button></div>
+        <div class="rsum" id="rsum"></div>
+        <div class="rbody" id="rbody"></div>
+        <div class="rfoot">An emergency counts as <b>solved</b> when every mission it affected was finished. If emergencies overlap in time, one mission can appear under more than one.</div>
+      </div>
+      <div id="drop">
+        <div class="box">
+          <h2>Load a simulation trace</h2>
+          <p>Drag &amp; drop <code>trace.json</code> here, or click <b>Open trace file…</b></p>
+          <p style="color:var(--muted);font-size:13px">Create one by running<br><code>./drone_simulator --scenario demo --trace</code></p>
+        </div>
+      </div>
+    </div>
+    <div class="card controls">
+      <div class="row">
+        <button id="play" class="primary" style="min-width:84px">▶ Play</button>
+        <button id="prev" title="Previous event (←)">⏮</button>
+        <button id="next" title="Next event (→)">⏭</button>
+        <button id="restart" title="Restart">↺</button>
+        <button id="rbtn" title="Show the report: which emergencies were solved and which failed">📋 Report</button>
+        <select id="speed" title="Playback speed">
+          <option value="0.5">0.5×</option><option value="1" selected>1×</option>
+          <option value="2">2×</option><option value="5">5×</option><option value="10">10×</option>
+        </select>
+        <span class="time">t = <b id="tnow">0.00</b> s / <span id="tend">0.00</span> s</span>
+        <label class="chk"><input type="checkbox" id="optPaths" checked> routes</label>
+        <label class="chk"><input type="checkbox" id="optMiss" checked> missions</label>
+        <label class="chk"><input type="checkbox" id="optLbl" checked> labels</label>
+      </div>
+      <div class="row"><div class="scrubwrap"><div id="marks"></div><input type="range" id="scrub" min="0" max="1000" value="0"></div></div>
+      <div class="keyline">
+        <span><i style="background:#ff4d6d"></i>critical mission arrives</span>
+        <span><i style="background:#bc8cff"></i>no-fly zone / comm loss</span>
+        <span><i style="background:#e3a008"></i>battery drain</span>
+        <span style="margin-left:auto">click a mark to jump there</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="stats card" id="stats"></div>
+    <div class="card sec emg"><h2>🚨 Emergencies right now <span id="ecount"></span></h2><div class="list" id="elist" style="max-height:200px"></div></div>
+    <div class="card sec"><h2>Drones <span id="dcount"></span></h2><div class="list" id="dlist"></div></div>
+    <div class="card sec"><h2>Missions <span id="mcount"></span></h2><div class="list" id="mlist"></div></div>
+    <div class="card sec"><h2>Event log</h2><div class="log" id="log"></div></div>
+    <div class="card legend">
+      <span><i class="sw" style="background:var(--idle)"></i>Idle</span>
+      <span><i class="sw" style="background:var(--route)"></i>En route</span>
+      <span><i class="sw" style="background:var(--rerout)"></i>Rerouting</span>
+      <span><i class="sw" style="background:var(--fault)"></i>Fault recovery</span>
+      <span><i class="sw" style="background:transparent;border:2px solid var(--comms)"></i>Comms lost</span>
+      <span><i class="sw" style="background:#5a2230"></i>No-fly zone</span>
+      <span><i class="sw" style="background:#3b4450"></i>Obstacle</span>
+    </div>
+  </div>
+</main>
+
+<!-- If trace.js sits next to this file it is loaded automatically (works from file://) -->
+<script src="scenarios.js" onerror="void 0"></script>
+<script src="trace.js" onerror="void 0"></script>
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const STATE_NAMES = ["IDLE","EN_ROUTE","REROUTING","FAULT_RECOVERY"];
+  const STATE_COLORS = ["#6e8bb3","#3fb950","#e3a008","#f85149"];
+  const STAT_DEFS = [
+    ["Completed",7],["Active",8],["Queued",9],
+    ["Preemptions",1],["Replans",3],["Replan fails",4],
+    ["Comm-loss",5],["Battery faults",6],["Events run",0]
+  ];
+
+  let T = null;            // expanded trace
+  let frames = [];
+  let curT = 0, playing = false, lastTs = 0, frameIdx = 0;
+  let selected = -1;
+  let logShownUpTo = -1;
+  const cv = $("cv"), ctx = cv.getContext("2d");
+  let geom = {x0:0,y0:0,cs:10};
+
+  // ---------- loading ----------
+  function loadTrace(raw){
+    if (!raw || !raw.frames || !raw.frames.length) { alert("Invalid or empty trace file."); return; }
+    // Expand compact frames into full snapshots (carry forward grid, paths, etc.)
+    let g = null, ms = "", c = [0,0,0,0,0,0,0,0,0,0], paths = [];
+    const nM = raw.missions.length;
+    frames = raw.frames.map(f => {
+      if (f.g) g = f.g;
+      if (f.ms !== undefined) ms = f.ms;
+      if (f.c) c = f.c;
+      const d = f.d.map((e,j) => {
+        if (e.length > 6) paths[j] = e[6];
+        return {x:e[0],y:e[1],s:e[2],b:e[3],cm:e[4],m:e[5],path:paths[j]||null};
+      });
+      return {t:f.t, g, d, ms:ms.padEnd(nM,"P"), c, l:f.l||[]};
+    });
+    T = {meta:raw.meta, missions:raw.missions};
+    // flat log list
+    T.logs = [];
+    frames.forEach((f,i) => f.l.forEach(line => T.logs.push({t:f.t,i,line})));
+    T.endT = frames[frames.length-1].t;
+    $("meta").textContent = `${T.meta.scenario} · seed ${T.meta.seed} · ${T.meta.w}×${T.meta.h} grid · ${T.meta.drones} drones · ${nM} missions · ${frames.length} frames`;
+    $("tend").textContent = (T.endT/1000).toFixed(2);
+    selected = -1; curT = 0; frameIdx = 0; logShownUpTo = -2; playing = false;
+    manualReport = false; reportDismissed = false; reportBuilt = null;
+    $("play").textContent = "▶ Play";
+    $("drop").classList.add("hidden");
+    buildStats();
+    buildMarks();
+    resize();
+    update(true);
+  }
+
+  // ---------- helpers ----------
+  // friendly mission name: descriptive ids stay as they are, generic MSN-xxx ids get a type
+  function nice(i){
+    const m = T.missions[i];
+    if (/^MSN-/.test(m.id) && !/CRIT/.test(m.id)){
+      const k = m.pr >= 10 ? "critical" : m.pr >= 7 ? "high-priority" : m.pr <= 1 ? "low-priority" : "routine";
+      return `${m.id} (${k} delivery)`;
+    }
+    return m.id;
+  }
+  const sec = ms => (ms/1000).toFixed(1) + " s";
+  function findFrame(t){
+    let lo = 0, hi = frames.length-1;
+    while (lo < hi){ const mid = (lo+hi+1)>>1; if (frames[mid].t <= t) lo = mid; else hi = mid-1; }
+    return lo;
+  }
+  function battColor(b){ return b > 50 ? "#3fb950" : b > 25 ? "#e3a008" : "#f85149"; }
+  function worldToPx(x,y){ return [geom.x0 + (x+0.5)*geom.cs, geom.y0 + (y+0.5)*geom.cs]; }
+
+  // ---------- drawing ----------
+  function resize(){
+    const r = $("mapwrap").getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    cv.width = Math.max(1, Math.floor(r.width*dpr)); cv.height = Math.max(1, Math.floor(r.height*dpr));
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    if (T){
+      const W = T.meta.w, H = T.meta.h, pad = 14;
+      geom.cs = Math.max(4, Math.min((r.width-2*pad)/W, (r.height-2*pad)/H));
+      geom.x0 = (r.width - geom.cs*W)/2; geom.y0 = (r.height - geom.cs*H)/2;
+      draw();
+    }
+  }
+
+  function dronePositions(t, k){
+    const a = frames[k], b = frames[k+1];
+    return a.d.map((da,j) => {
+      let x = da.x, y = da.y;
+      if (b && (da.s === 1 || da.s === 2) && b.t > a.t){
+        const db = b.d[j];
+        if (db && Math.abs(db.x-da.x) <= 2 && Math.abs(db.y-da.y) <= 2){
+          const u = Math.min(1, Math.max(0, (t-a.t)/(b.t-a.t)));
+          x = da.x + (db.x-da.x)*u; y = da.y + (db.y-da.y)*u;
+        }
+      }
+      return [x,y];
+    });
+  }
+
+  function draw(){
+    if (!T) return;
+    const f = frames[frameIdx], W = T.meta.w, H = T.meta.h, cs = geom.cs;
+    const r = $("mapwrap").getBoundingClientRect();
+    ctx.clearRect(0,0,r.width,r.height);
+
+    // grid background
+    ctx.fillStyle = "#0b1016"; ctx.fillRect(geom.x0, geom.y0, W*cs, H*cs);
+    if (cs >= 8){
+      ctx.strokeStyle = "#151c25"; ctx.lineWidth = 1; ctx.beginPath();
+      for (let i=0;i<=W;i++){ ctx.moveTo(geom.x0+i*cs, geom.y0); ctx.lineTo(geom.x0+i*cs, geom.y0+H*cs); }
+      for (let j=0;j<=H;j++){ ctx.moveTo(geom.x0, geom.y0+j*cs); ctx.lineTo(geom.x0+W*cs, geom.y0+j*cs); }
+      ctx.stroke();
+    }
+    // cells
+    const g = f.g;
+    for (let y=0;y<H;y++) for (let x=0;x<W;x++){
+      const v = g.charCodeAt(y*W+x) - 48;
+      if (v === 1){ ctx.fillStyle = "#3b4450"; ctx.fillRect(geom.x0+x*cs+1, geom.y0+y*cs+1, cs-2, cs-2); }
+      else if (v === 2){
+        ctx.fillStyle = "rgba(248,81,73,.28)"; ctx.fillRect(geom.x0+x*cs, geom.y0+y*cs, cs, cs);
+        ctx.strokeStyle = "rgba(248,81,73,.7)"; ctx.lineWidth = 1;
+        ctx.strokeRect(geom.x0+x*cs+.5, geom.y0+y*cs+.5, cs-1, cs-1);
+      }
+    }
+
+    // missions
+    if ($("optMiss").checked){
+      T.missions.forEach((m,i) => {
+        const st = f.ms[i];
+        if (st !== "P" && st !== "A") return;
+        const crit = m.pr >= 10, col = crit ? "#ff4d6d" : st === "A" ? "#58a6ff" : "#7d8590";
+        const [px,py] = worldToPx(m.px,m.py), [dx,dy] = worldToPx(m.dx,m.dy);
+        const s = Math.max(3, cs*0.28);
+        ctx.globalAlpha = st === "A" ? 1 : 0.55;
+        ctx.fillStyle = col; ctx.fillRect(px-s, py-s, s*2, s*2);              // pickup = square
+        ctx.strokeStyle = col; ctx.lineWidth = crit ? 2 : 1.5;
+        ctx.beginPath(); ctx.moveTo(dx,dy-s*1.4); ctx.lineTo(dx+s*1.4,dy); ctx.lineTo(dx,dy+s*1.4); ctx.lineTo(dx-s*1.4,dy); ctx.closePath(); ctx.stroke(); // dropoff = diamond
+        ctx.globalAlpha = 1;
+      });
+    }
+
+    const pos = dronePositions(curT, frameIdx);
+
+    // routes
+    if ($("optPaths").checked){
+      f.d.forEach((d,j) => {
+        if (!d.path || d.path.length < 4 || (d.s !== 1 && d.s !== 2)) return;
+        ctx.strokeStyle = j === selected ? "#ffffff" : STATE_COLORS[d.s];
+        ctx.globalAlpha = j === selected ? .9 : .38; ctx.lineWidth = j === selected ? 2 : 1.5;
+        ctx.setLineDash([4,3]); ctx.beginPath();
+        const [sx,sy] = worldToPx(pos[j][0], pos[j][1]); ctx.moveTo(sx,sy);
+        for (let k=0;k<d.path.length;k+=2){
+          const [qx,qy] = worldToPx(d.path[k], d.path[k+1]); ctx.lineTo(qx,qy);
+        }
+        ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+      });
+    }
+
+    // drones
+    const R = Math.max(5, cs*0.36);
+    f.d.forEach((d,j) => {
+      const [px,py] = worldToPx(pos[j][0], pos[j][1]);
+      if (d.cm){ // comms lost ring
+        ctx.strokeStyle = "#bc8cff"; ctx.lineWidth = 2; ctx.setLineDash([3,2]);
+        ctx.beginPath(); ctx.arc(px,py,R+4,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+      }
+      if (j === selected){ ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(px,py,R+7,0,Math.PI*2); ctx.stroke(); }
+      const onCrit = d.m >= 0 && T.missions[d.m] && T.missions[d.m].pr >= 10;
+      ctx.fillStyle = STATE_COLORS[d.s]; ctx.beginPath(); ctx.arc(px,py,R,0,Math.PI*2); ctx.fill();
+      if (onCrit){ ctx.strokeStyle = "#ff4d6d"; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(px,py,R+1,0,Math.PI*2); ctx.stroke(); }
+      // battery arc
+      ctx.strokeStyle = battColor(d.b); ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(px,py,R-2.5,-Math.PI/2,-Math.PI/2+Math.PI*2*Math.max(0,d.b)/100); ctx.stroke();
+      if ($("optLbl").checked && cs >= 14){
+        ctx.fillStyle = "#e6edf3"; ctx.font = "600 10px system-ui"; ctx.textAlign = "center";
+        ctx.fillText(ids(j), px, py-R-6);
+      }
+    });
+  }
+  const ids = j => "D" + String(j+1).padStart(2,"0");
+
+  // ---------- panels ----------
+  function buildStats(){
+    $("stats").innerHTML = STAT_DEFS.map(([k],i) =>
+      `<div class="stat"><div class="v" id="st${i}">0</div><div class="k">${k}</div></div>`).join("");
+  }
+
+  function updatePanels(force){
+    const f = frames[frameIdx];
+    STAT_DEFS.forEach(([,idx],i) => { $("st"+i).textContent = f.c[idx]; });
+
+    // emergencies
+    updateEmergencies(f);
+
+    // drones
+    $("dcount").textContent = f.d.length;
+    $("dlist").innerHTML = f.d.map((d,j) => {
+      const m = d.m >= 0 && T.missions[d.m] ? T.missions[d.m].id : "";
+      return `<div class="item ${j===selected?"sel":""}" data-j="${j}">
+        <i class="dot" style="background:${STATE_COLORS[d.s]}"></i><span>${ids(j)}</span>
+        <div class="bar"><i style="width:${Math.max(0,d.b)}%;background:${battColor(d.b)}"></i></div>
+        <span style="color:var(--muted);font-size:12px">${d.b.toFixed(0)}%</span>
+        <span class="tag ${d.cm?"X":""}">${d.cm?"NO COMMS · ":""}${m || STATE_NAMES[d.s].replace("_"," ")}</span></div>`;
+    }).join("");
+
+    // missions (show non-completed first)
+    const order = {A:0,P:1,X:2,C:3};
+    const rows = T.missions.map((m,i) => ({m,i,s:f.ms[i]})).sort((a,b) => order[a.s]-order[b.s] || b.m.pr-a.m.pr);
+    const done = rows.filter(r => r.s === "C").length;
+    $("mcount").textContent = `${done}/${rows.length} done`;
+    $("mlist").innerHTML = rows.slice(0,120).map(r => {
+      const label = {A:"ACTIVE",P:"PENDING",C:"DONE",X:"ABORTED"}[r.s];
+      return `<div class="item"><span>${nice(r.i)}</span>
+        <span class="tag ${r.m.pr>=10?"crit":""}">P${r.m.pr}</span><span class="tag ${r.s}" style="margin-left:0">${label}</span></div>`;
+    }).join("");
+
+    // log: show last 200 lines up to current frame
+    if (force || logShownUpTo !== frameIdx){
+      logShownUpTo = frameIdx;
+      let n = 0; // count logs with i <= frameIdx
+      let lo = 0, hi = T.logs.length;
+      while (lo < hi){ const mid = (lo+hi)>>1; if (T.logs[mid].i <= frameIdx) lo = mid+1; else hi = mid; }
+      n = lo;
+      const slice = T.logs.slice(Math.max(0,n-200), n);
+      const el = $("log");
+      el.innerHTML = slice.map(e => `<div class="${cls(e.line)}"><span class="t">${(e.t/1000).toFixed(2)}s</span>${esc(e.line)}</div>`).join("");
+      el.scrollTop = el.scrollHeight;
+    }
+  }
+  function updateEmergencies(f){
+    const items = [];
+    // 1) critical missions
+    T.missions.forEach((m,i) => {
+      if (m.pr < 10) return;
+      const st = f.ms[i];
+      if (st === "A"){
+        const j = f.d.findIndex(d => d.m === i);
+        items.push(["CRITICAL","crit",`${nice(i)} is being flown${j>=0?" by "+ids(j):""}`]);
+      } else if (st === "P" && (T.meta.scenario !== "stress" || items.filter(x=>x[1]==="crit").length < 6)){
+        // pending critical only matters once it has actually been dispatched (it shows in the log)
+        if (f.t > 0 && missionSeen(m.id, frameIdx)) items.push(["CRITICAL","crit",`${nice(i)} is waiting for a drone`]);
+      }
+    });
+    // 2) no-fly zone
+    let cells = 0; for (let k=0;k<f.g.length;k++) if (f.g.charCodeAt(k) === 50) cells++;
+    if (cells) items.push(["NO-FLY","haz",`No-fly zone active (${cells} cells blocked)`]);
+    // 3) drones
+    f.d.forEach((d,j) => {
+      if (d.cm) items.push(["COMMS","haz",`${ids(j)} lost radio contact`]);
+      if (d.s === 3) items.push(["FAULT","crit",`${ids(j)} is in fault recovery`]);
+      if (d.b < 25) items.push(["BATTERY","warn",`${ids(j)} battery low (${d.b.toFixed(0)}%)`]);
+    });
+    $("ecount").textContent = items.length ? items.length + " active" : "";
+    $("elist").innerHTML = items.length
+      ? items.slice(0,40).map(x => `<div class="item"><span class="tag ${x[1]}">${x[0]}</span><span class="txt">${x[2]}</span></div>`).join("")
+      : `<div class="item"><span class="tag ok">ALL CLEAR</span><span class="txt">No emergencies at this moment</span></div>`;
+  }
+  // has this mission's id appeared in the log up to frame k?
+  function missionSeen(id, k){
+    if (!T.seen) T.seen = {};
+    if (T.seen[id] === undefined){
+      const hit = T.logs.find(e => e.line.includes(id) && /Critical mission detected|Assigned|Re-queued/.test(e.line));
+      T.seen[id] = hit ? hit.i : 1e9;
+    }
+    return T.seen[id] <= k;
+  }
+
+  function buildMarks(){
+    const box = $("marks"); box.innerHTML = "";
+    const seen = new Set();
+    T.logs.forEach(e => {
+      let col = null, label = "";
+      if (/Critical mission detected/.test(e.line)){ col = "#ff4d6d"; label = "Critical mission"; }
+      else if (/NoFlyZoneEvent/.test(e.line)){ col = "#bc8cff"; label = "No-fly zone"; }
+      else if (/CommLossEvent/.test(e.line)){ col = "#bc8cff"; label = "Comm loss"; }
+      else if (/BatteryDrainEvent/.test(e.line)){ col = "#e3a008"; label = "Battery drain"; }
+      if (!col) return;
+      const key = e.t + label; if (seen.has(key)) return; seen.add(key);
+      const m = document.createElement("i");
+      m.style.left = (T.endT ? e.t/T.endT*100 : 0) + "%"; m.style.background = col;
+      m.title = `${(e.t/1000).toFixed(2)}s – ${label}`;
+      m.onclick = () => { playing = false; $("play").textContent = "▶ Play"; curT = e.t; update(true); };
+      box.appendChild(m);
+    });
+  }
+
+  // ---------- final report ----------
+  function frameBefore(t){ let k = 0; for (let i=0;i<frames.length;i++){ if (frames[i].t < t) k = i; else break; } return k; }
+
+  function buildReport(){
+    const F = frames, nM = T.missions.length;
+    const holders = Array.from({length:nM}, () => []), doneK = new Array(nM).fill(-1);
+    F.forEach((f,k) => {
+      f.d.forEach((d,j) => { if (d.m >= 0 && d.m < nM){ const h = holders[d.m]; if (h[h.length-1] !== j) h.push(j); } });
+      for (let i=0;i<nM;i++) if (doneK[i] < 0 && f.ms[i] === "C") doneK[i] = k;
+    });
+    const solver = i => holders[i].length ? holders[i][holders[i].length-1] : -1;
+    const rows = [];
+
+    // ---- critical missions ----
+    T.missions.forEach((m,i) => {
+      if (m.pr < 10) return;
+      const ok = doneK[i] >= 0, h = holders[i];
+      let d;
+      if (ok){
+        d = `delivered by <b>${ids(solver(i))}</b> at ${sec(F[doneK[i]].t)}`;
+        if (h.length > 1) d += ` (handed over: ${h.map(ids).join(" → ")})`;
+      } else {
+        const last = F[F.length-1].ms[i];
+        d = last === "X" ? "aborted"
+          : last === "A" ? "still in flight when the simulation ended"
+          : "never delivered – it went back to the queue and was never retried";
+        if (h.length) d += ` · last drone: <b>${ids(h[h.length-1])}</b>`;
+      }
+      rows.push({ok, t:0, title:`Critical mission: ${nice(i)}`, d});
+    });
+
+    // ---- hazards ----
+    const zr = /NoFlyZoneEvent at t=(\d+) center=\(([\d.]+),([\d.]+)\) radius=([\d.]+)m duration=(\d+)ms/;
+    const cr = /CommLossEvent at t=(\d+) for drone DRN-(\d+) duration=(\d+)ms/;
+    const br = /BatteryDrainEvent at t=(\d+) for drone DRN-(\d+) drain=([\d.]+)%/;
+    const outcome = set => {
+      const miss = [...set];
+      if (!miss.length) return {ok:null, d:"no mission was affected (the drone was idle or the route was not touched)"};
+      const ok = miss.every(i => doneK[i] >= 0);
+      const d = miss.map(i => doneK[i] >= 0
+        ? `${nice(i)} <span style="color:#56d364">✔ finished by ${ids(solver(i))}</span>`
+        : `${nice(i)} <span style="color:#ff8da1">✘ not finished</span>`).join("<br>");
+      return {ok, d};
+    };
+    T.logs.forEach(e => {
+      let m;
+      if ((m = zr.exec(e.line))){
+        const t = +m[1], dur = +m[5], set = new Set();
+        for (let k=1;k<F.length;k++){
+          const a = F[k-1], b = F[k];
+          if (b.t < t || b.t > t + dur) continue;
+          b.d.forEach((d,j) => { const pd = a.d[j]; if (d.m >= 0 && pd.m === d.m && d.path !== pd.path) set.add(d.m); }); // route changed = replan
+          if (b.t <= t + 300) for (let i=0;i<nM;i++) if (a.ms[i] === "A" && b.ms[i] === "P") set.add(i);               // sent back to queue
+        }
+        const o = outcome(set);
+        rows.push({ok:o.ok, t, title:`No-fly zone at ${sec(t)} (lasted ${sec(dur)})`, d:o.d});
+      } else if ((m = cr.exec(e.line))){
+        const t = +m[1], j = +m[2]-1, dur = +m[3], set = new Set();
+        const mm = frames[frameBefore(t)].d[j]; if (mm && mm.m >= 0) set.add(mm.m);
+        const o = outcome(set);
+        rows.push({ok:o.ok, t, title:`${ids(j)} lost radio contact at ${sec(t)} (${sec(dur)})`, d:o.d});
+      } else if ((m = br.exec(e.line))){
+        const t = +m[1], j = +m[2]-1, set = new Set();
+        const mm = frames[frameBefore(t)].d[j]; if (mm && mm.m >= 0) set.add(mm.m);
+        const o = outcome(set);
+        rows.push({ok:o.ok, t, title:`${ids(j)} lost ${m[3]}% battery at ${sec(t)}`, d:o.d});
+      }
+    });
+
+    const bad = rows.filter(r => r.ok === false), good = rows.filter(r => r.ok === true), none = rows.filter(r => r.ok === null);
+    const sortT = (a,b) => a.t - b.t;
+    bad.sort(sortT); good.sort(sortT); none.sort(sortT);
+    const row = (r,cls,label) => `<div class="rrow"><span class="b ${cls}">${label}</span><div><div class="t">${r.title}</div><div class="d">${r.d}</div></div></div>`;
+    const cap = (arr,cls,label,n) => arr.slice(0,n).map(r => row(r,cls,label)).join("") +
+        (arr.length > n ? `<div class="rmore">… and ${arr.length-n} more</div>` : "");
+    const showNone = rows.length <= 14 ? none.length : 0;
+    $("rsum").innerHTML =
+      `<span class="pill ok">✔ ${good.length} solved</span><span class="pill bad">✘ ${bad.length} failed</span>` +
+      (none.length ? `<span class="pill none">– ${none.length} had no impact</span>` : "");
+    $("rbody").innerHTML = rows.length
+      ? cap(bad,"bad","✘ FAILED",10) + cap(good,"ok","✔ SOLVED",10) + cap(none,"none","NO IMPACT",showNone) +
+        (none.length > showNone ? `<div class="rmore">${none.length} hazards hit nothing (idle drones) – not listed</div>` : "")
+      : `<div class="rmore">No emergencies happened in this scenario.</div>`;
+    $("rsub").textContent = T.meta.scenario;
+  }
+
+  let manualReport = false, reportDismissed = false, reportBuilt = null;
+  function syncReport(){
+    if (!T) return;
+    const atEnd = curT >= T.endT;
+    if (!atEnd) reportDismissed = false;
+    const show = manualReport || (atEnd && !reportDismissed);
+    if (show && reportBuilt !== T){ buildReport(); reportBuilt = T; }
+    $("report").classList.toggle("hidden", !show);
+  }
+  $("rbtn").onclick = () => { manualReport = !manualReport; if (!manualReport && curT >= T.endT) reportDismissed = true; syncReport(); };
+  $("rclose").onclick = () => { manualReport = false; reportDismissed = true; syncReport(); };
+
+  function cls(s){
+    const l = s.toLowerCase();
+    if (l.includes("preempt")) return "hl-pre";
+    if (l.includes("replan") || l.includes("reroute") || l.includes("requeue")) return "hl-rep";
+    if (l.includes("nofly") || l.includes("no-fly") || l.includes("commloss") || l.includes("comm") || l.includes("fault") || l.includes("hazard")) return "hl-haz";
+    if (l.includes("complete")) return "hl-ok";
+    return "";
+  }
+  const esc = s => s.replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+  function update(force){
+    if (!T) return;
+    const k = findFrame(curT);
+    const changed = k !== frameIdx || force;
+    frameIdx = k;
+    $("tnow").textContent = (curT/1000).toFixed(2);
+    $("scrub").value = T.endT ? Math.round(curT/T.endT*1000) : 0;
+    if (changed) updatePanels(force);
+    draw();
+    syncReport();
+  }
+
+  // ---------- playback ----------
+  function tick(ts){
+    if (playing && T){
+      const dt = (ts - lastTs) * parseFloat($("speed").value);
+      curT = Math.min(T.endT, curT + dt);
+      if (curT >= T.endT){ playing = false; $("play").textContent = "▶ Play"; }
+      update();
+    }
+    lastTs = ts;
+    requestAnimationFrame(tick);
+  }
+  function togglePlay(){
+    if (!T) return;
+    if (!playing && curT >= T.endT) curT = 0;
+    playing = !playing;
+    $("play").textContent = playing ? "⏸ Pause" : "▶ Play";
+  }
+  function step(dir){
+    if (!T) return;
+    playing = false; $("play").textContent = "▶ Play";
+    const k = Math.max(0, Math.min(frames.length-1, frameIdx + dir));
+    curT = frames[k].t; update();
+  }
+
+  $("play").onclick = togglePlay;
+  $("prev").onclick = () => step(-1);
+  $("next").onclick = () => step(1);
+  $("restart").onclick = () => { curT = 0; update(true); };
+  $("scrub").oninput = e => { if (!T) return; curT = e.target.value/1000*T.endT; update(); };
+  ["optPaths","optMiss","optLbl"].forEach(id => $(id).onchange = draw);
+  window.addEventListener("keydown", e => {
+    if (e.code === "Space"){ e.preventDefault(); togglePlay(); }
+    else if (e.code === "ArrowRight") step(1);
+    else if (e.code === "ArrowLeft") step(-1);
+  });
+  window.addEventListener("resize", resize);
+
+  // select drone from list / canvas
+  $("dlist").onclick = e => {
+    const it = e.target.closest(".item"); if (!it) return;
+    const j = +it.dataset.j; selected = (selected === j) ? -1 : j; updatePanels(true); draw();
+  };
+  cv.addEventListener("click", e => {
+    if (!T) return;
+    const r = cv.getBoundingClientRect(), mx = e.clientX-r.left, my = e.clientY-r.top;
+    const pos = dronePositions(curT, frameIdx); let best = -1, bd = 1e9;
+    pos.forEach((p,j) => { const [px,py] = worldToPx(p[0],p[1]); const d = Math.hypot(px-mx,py-my); if (d < bd){bd=d;best=j;} });
+    selected = (bd < Math.max(12, geom.cs*0.6)) ? (best === selected ? -1 : best) : -1;
+    updatePanels(true); draw();
+  });
+  cv.addEventListener("mousemove", e => {
+    const tip = $("tip");
+    if (!T){ tip.style.display = "none"; return; }
+    const r = cv.getBoundingClientRect(), mx = e.clientX-r.left, my = e.clientY-r.top;
+    const pos = dronePositions(curT, frameIdx), f = frames[frameIdx]; let best = -1, bd = 1e9;
+    pos.forEach((p,j) => { const [px,py] = worldToPx(p[0],p[1]); const d = Math.hypot(px-mx,py-my); if (d < bd){bd=d;best=j;} });
+    if (bd < Math.max(12, geom.cs*0.6)){
+      const d = f.d[best], m = d.m >= 0 && T.missions[d.m] ? T.missions[d.m].id : "none";
+      tip.innerHTML = `<b>${ids(best)}</b> · ${STATE_NAMES[d.s]}<br>battery ${d.b.toFixed(1)}% · mission ${m}${d.cm?"<br><span style='color:#bc8cff'>comms lost</span>":""}`;
+      tip.style.left = (mx+14)+"px"; tip.style.top = (my+14)+"px"; tip.style.display = "block";
+    } else tip.style.display = "none";
+  });
+
+  // ---------- file loading ----------
+  function readFile(file){
+    const rd = new FileReader();
+    rd.onload = () => {
+      try {
+        let txt = rd.result.trim();
+        if (txt.startsWith("window.TRACE")) txt = txt.replace(/^window\.TRACE\s*=\s*/, "").replace(/;\s*$/, "");
+        const obj = JSON.parse(txt);
+        SC.push({name:"📂 " + file.name, desc:"Loaded from file <b>" + file.name + "</b>.", trace:obj});
+        fillSelect(SC.length-1); pickScenario(SC.length-1);
+      } catch (err) { alert("Could not read that file as a trace: " + err.message); }
+    };
+    rd.readAsText(file);
+  }
+  $("file").onchange = e => { if (e.target.files[0]) readFile(e.target.files[0]); e.target.value = ""; };
+  const drop = $("drop");
+  ["dragenter","dragover"].forEach(ev => window.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("hidden"); drop.classList.add("over"); }));
+  ["dragleave","drop"].forEach(ev => window.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); if (T) drop.classList.add("hidden"); }));
+  window.addEventListener("drop", e => { if (e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]); });
+
+  // ---------- scenarios ----------
+  const SC = (window.SCENARIOS || []).slice();
+  if (window.TRACE) SC.unshift({name:"★ My latest run (ui/trace.js)", desc:"The replay written by your own simulator run (<b>--trace</b>).", trace:window.TRACE});
+  function fillSelect(sel){
+    const el = $("scn"); el.innerHTML = "";
+    SC.forEach((x,i) => { const o = document.createElement("option"); o.value = i; o.textContent = x.name; el.appendChild(o); });
+    if (sel !== undefined) el.value = sel;
+  }
+  function pickScenario(i){
+    const x = SC[i]; if (!x) return;
+    $("desc").innerHTML = x.desc || "";
+    loadTrace(x.trace);
+  }
+  $("scn").onchange = e => pickScenario(+e.target.value);
+
+  // ---------- start ----------
+  requestAnimationFrame(tick);
+  new ResizeObserver(resize).observe($("mapwrap"));
+  if (SC.length){
+    fillSelect(0); pickScenario(0);
+  } else if (location.protocol.startsWith("http")){
+    fetch("trace.json").then(r => r.ok ? r.json() : Promise.reject()).then(loadTrace).catch(() => {});
+  }
+})();
+</script>
+</body>
+</html>
